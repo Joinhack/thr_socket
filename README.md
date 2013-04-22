@@ -1,0 +1,1 @@
+The mysql plugin like handle socket.
