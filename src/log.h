@@ -12,7 +12,7 @@ enum LOG_LEVEL {
 
 void log_init(int fd);
 
-void log_print(int level, char *fmt, ...);
+void log_print(int level, const char *fmt, ...);
 
 #define ERROR(fmt, ...) log_print(LEVEL_ERR, fmt, ##__VA_ARGS__)
 

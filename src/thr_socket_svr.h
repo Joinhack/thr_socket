@@ -1,5 +1,5 @@
-#ifndef THR_SOCKET_H
-#define THR_SOCKET_H
+#ifndef THR_SOCKET_SVR_H
+#define THR_SOCKET_SVR_H
 
 #include "common.h"
 #include "atomic.h"
@@ -25,5 +25,27 @@ typedef struct {
 	volatile int running;
 	cthr_pool *thr_pool;
 } thr_socket_svr;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+thr_socket_svr *create_thr_server();
+
+int server_init(thr_socket_svr *svr);
+
+void *mainLoop(void *p);
+
+void destroy_thr_server(thr_socket_svr *svr);
+
+long long thrs_used_mem();
+
+#ifdef __cplusplus
+}
+#endif
+
+extern int threads;
+
+extern int port;
 
 #endif

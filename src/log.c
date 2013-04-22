@@ -65,7 +65,7 @@ static int log_write(int fd, char *ptr, size_t len) {
 	return count;
 }
 
-void log_print(int level, char *fmt, ...) {
+void log_print(int level, const char *fmt, ...) {
 	char buf[65535];
 	if(level < top_level)
 		return;

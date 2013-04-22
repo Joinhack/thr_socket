@@ -3,7 +3,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include "mysql_inc.h"
-#include "thr_socket.h"
+#include "thr_socket_svr.h"
 
 
 static int read_event_proc(cevents *cevts, int fd, void *priv, int mask);
