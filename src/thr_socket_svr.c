@@ -6,9 +6,9 @@
 #include <unistd.h>
 #include "thr_socket_svr.h"
 
-int threads = 10;
+int threads;
 
-int port = 9999;
+int port;
 
 void pong(cio *io);
 

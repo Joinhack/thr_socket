@@ -58,7 +58,10 @@ static struct st_mysql_show_var thr_status_variables[] = {
 };
 
 static MYSQL_SYSVAR_INT(listen_port, port, PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
-		"thr socket listen port", NULL,NULL, 9999, 1024, 65535, 0);
+		"thr socket listen port", NULL,NULL, 8889, 1024, 65535, 0);
+
+static MYSQL_SYSVAR_INT(backend_thread_num, threads, PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+		"thr socket backend thread nnum", NULL,NULL, 10, 1, 1024, 0);
 
 static int show_thrs_vars(void *thd, struct st_mysql_show_var *var, char *buff) {
 	var->type = SHOW_ARRAY;
@@ -73,6 +76,7 @@ static struct st_mysql_show_var daemon_thr_socket_status_variables[] = { { "thrs
 
 static struct st_mysql_sys_var *daemon_thr_socket_system_variables[] = {
 	MYSQL_SYSVAR(listen_port),
+	MYSQL_SYSVAR(backend_thread_num),
 	0
 };
 

@@ -3,7 +3,7 @@ MYSQL_PATH=/usr/local
 
 CC=gcc
 CPP=g++
-CFLAGS= -g -DUSE_TRACE  -I $(MYSQL_PATH)/include
+CFLAGS= -g -fPIC -DUSE_TRACE  -I $(MYSQL_PATH)/include
 OPTS = -lpthread
 
 .c.o:
