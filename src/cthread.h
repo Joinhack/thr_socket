@@ -29,9 +29,15 @@ typedef struct _thr_pool {
 	volatile int state;
 	size_t size;
 } cthr_pool;
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 cthr_pool *cthr_pool_create(size_t size);
 void cthr_pool_destroy(cthr_pool *pool);
 int cthr_pool_run_task(cthr_pool *pool, cthread_proc *proc, void *data);
+#ifdef __cplusplus
+}
+#endif
 
 #endif /*CTHREAD_H*/

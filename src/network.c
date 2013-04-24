@@ -2,7 +2,6 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
-#include "mysql_inc.h"
 #include "thr_socket_svr.h"
 
 
@@ -149,7 +148,7 @@ static inline int _reply_prefix_len(cio *io, char prefix, long long l) {
 	size_t len;
 	char buf[64] = {0};
 	buf[0] = prefix;
-	ll2str(l, buf + 1, sizeof(buf) - 1);
+	lltostr(l, buf + 1, sizeof(buf) - 1);
 	len = strlen(buf + 1);
 	buf[len + 1] = '\r';
 	buf[len + 2] = '\n';

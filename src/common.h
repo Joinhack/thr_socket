@@ -19,12 +19,19 @@ typedef uint64_t msec_t;
 #define USE_TASKINFO
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void time_now(long *s, int *ms);
 
 int str2ll(char *p, size_t len, long long *l);
 
-int ll2str(long long l, char *p, size_t len);
+int lltostr(long long l, char *p, size_t len);
 
 int str2l(char *p, size_t len, long *l);
+#ifdef __cplusplus
+}
+#endif
 
 #endif /*end define common head*/

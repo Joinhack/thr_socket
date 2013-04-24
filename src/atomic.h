@@ -4,6 +4,9 @@
 #include "common.h"
 
 #ifndef CINLINE
+#ifdef __cplusplus
+extern "C" {
+#endif
 uint64_t	atomic_add_uint64(uint64_t *p, uint64_t v);
 uint64_t	atomic_sub_uint64(uint64_t *p, uint64_t v);
 int atomic_cmp_set_uint64(uint64_t *p, uint64_t o, uint64_t n);
@@ -11,6 +14,9 @@ int atomic_cmp_set_uint64(uint64_t *p, uint64_t o, uint64_t n);
 uint32_t	atomic_add_uint32(uint32_t *p, uint32_t v);
 uint32_t	atomic_sub_uint32(uint32_t *p, uint32_t v);
 int atomic_cmp_set_uint32(uint32_t *p, uint32_t o, uint32_t n);
+#ifdef __cplusplus
+}
+#endif
 #endif
 
 #ifdef __GCC_HAVE_SYNC_COMPARE_AND_SWAP_8
@@ -57,9 +63,9 @@ CINLINE int atomic_cmp_set_uint64(uint64_t *p, uint64_t o, uint64_t n) {
 		);
 	return (result);
 }
-
-#else
-#  error "not support atomic"
+#  if (TARGET == 64)
+#    error "not support atomic"
+#  endif
 #endif  //end define the 64 bit
 
 
@@ -111,7 +117,9 @@ CINLINE int atomic_cmp_set_uint32(uint32_t *p, uint32_t o, uint32_t n) {
 
 
 #else
-#  error "not support atomic"
+#  if (TARGET == 32)
+#    error "not support atomic"
+#  endif
 #endif
 
 #endif /*ATOMIC head define**/

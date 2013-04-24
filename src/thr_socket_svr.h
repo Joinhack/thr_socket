@@ -26,6 +26,14 @@ typedef struct {
 	cthr_pool *thr_pool;
 } thr_socket_svr;
 
+struct shared_obj {
+	obj *err;
+	obj *pong;
+	obj *ok;
+	obj *cmd;
+	obj *nullbulk;
+};
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -40,11 +48,17 @@ void destroy_thr_server(thr_socket_svr *svr);
 
 long long thrs_used_mem();
 
+void pong(cio *io);
+
+void open_table_command(cio* io);
+
 #ifdef __cplusplus
 }
 #endif
 
-extern int threads;
+extern struct shared_obj shared;
+
+extern int thread_num;
 
 extern int port;
 

@@ -39,6 +39,10 @@ typedef struct dict_iterator {
 	dict_entry *entry;
 } dict_iterator;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 dict *dict_create(dict_opts *opts);
 
 void dict_destroy(dict *d);
@@ -64,6 +68,10 @@ int dict_del(dict *d, void *key);
 dict_entry *dict_find(dict *d, void *key);
 
 int dict_del_no_free(dict *d, void *key);
+
+#ifdef __cplusplus
+}
+#endif
 
 #define DICT_USED(d) (d->dt[0].used + d->dt[1].used)
 

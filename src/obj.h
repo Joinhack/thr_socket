@@ -16,6 +16,10 @@ typedef struct obj {
 	LOCK_T lock;
 } obj;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 obj* obj_create(int type, void *priv);
 
 int obj_incr(obj *o);
@@ -25,6 +29,10 @@ int obj_decr(obj *o);
 obj* dict_obj_create(dict_opts *opts);
 
 obj* cstr_obj_create(const char *s);
+
+#ifdef __cplusplus
+}
+#endif
 
 #define OBJ_LOCK(o) LOCK(&o->lock)
 

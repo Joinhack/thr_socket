@@ -53,7 +53,7 @@ int str2l(char *p, size_t len, long *l) {
 	return 0;
 }
 
-int ll2str(long long l, char *p, size_t size) {
+int lltostr(long long l, char *p, size_t size) {
 	char *ptr, buf[64];
 	int len = 0, bs, offset;
 	unsigned long long ll;

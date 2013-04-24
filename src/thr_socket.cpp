@@ -4,8 +4,17 @@
 #include <ctype.h>
 #include <string.h>
 #include <unistd.h>
+
 #include "mysql_inc.h"
 #include "thr_socket_svr.h"
+
+void pong(cio *io) {
+	reply_cstr(io, (cstr)shared.pong->priv);
+}
+
+void open_table_command(cio* io) {
+
+}
 
 static thr_socket_svr *svr = NULL;
 
@@ -52,7 +61,7 @@ static int show_thrs_mem(void *thd, struct st_mysql_show_var *var, char *buff) {
 }
 
 static struct st_mysql_show_var thr_status_variables[] = {
-	{"threads", (char*)&threads, SHOW_INT},
+	{"threads", (char*)&thread_num, SHOW_INT},
 	{"used_mem", (char*)show_thrs_mem, SHOW_FUNC},
 	{ NullS, NullS, SHOW_LONG }
 };
@@ -60,7 +69,7 @@ static struct st_mysql_show_var thr_status_variables[] = {
 static MYSQL_SYSVAR_INT(listen_port, port, PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
 		"thr socket listen port", NULL,NULL, 8889, 1024, 65535, 0);
 
-static MYSQL_SYSVAR_INT(backend_thread_num, threads, PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
+static MYSQL_SYSVAR_INT(backend_thread_num, thread_num, PLUGIN_VAR_RQCMDARG | PLUGIN_VAR_READONLY,
 		"thr socket backend thread nnum", NULL,NULL, 10, 1, 1024, 0);
 
 static int show_thrs_vars(void *thd, struct st_mysql_show_var *var, char *buff) {

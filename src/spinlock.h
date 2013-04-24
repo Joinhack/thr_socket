@@ -8,6 +8,9 @@
 #define SL_LOCKED 1
 
 typedef uint32_t spinlock_t;
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #ifndef CINLINE
 void spinlock_trylock(spinlock_t *lock);
@@ -24,5 +27,8 @@ CINLINE int spinlock_trylock(spinlock_t *lock) {
 CINLINE void spinlock_unlock(spinlock_t *lock) {
 	*lock = SL_UNLOCK;
 }
+#ifdef __cplusplus
+}
+#endif
 
 #endif /*end define spinlock**/

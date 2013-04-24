@@ -41,6 +41,9 @@ struct cevents {
 	void *priv_data; //use for implement data.
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 cevents *cevents_create();
 void cevents_destroy(cevents *cevts);
 int cevents_add_event(cevents *cevts, int fd, int mask, event_proc *proc, void *priv);
@@ -48,6 +51,8 @@ int cevents_del_event(cevents *cevts, int fd, int mask);
 int cevents_poll(cevents *cevts, msec_t ms);
 void cevents_push_fired(cevents *cevts, cevent_fired *fired);
 int cevents_pop_fired(cevents *cevts, cevent_fired *fired);
-
+#ifdef __cplusplus
+}
+#endif
 
 #endif /*end define cevent**/

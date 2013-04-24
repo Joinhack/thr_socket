@@ -32,6 +32,10 @@ typedef struct {
 	void *priv;
 } cio;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int cio_set_noblock(int fd);
 
 int cio_set_block(int fd);
@@ -45,5 +49,9 @@ cio *cio_create();
 void cio_destroy(cio *io);
 
 void cio_clear(cio *io);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /*end define common io**/

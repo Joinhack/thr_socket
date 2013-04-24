@@ -6,21 +6,11 @@
 #include <unistd.h>
 #include "thr_socket_svr.h"
 
-int threads;
+int thread_num;
 
 int port;
 
-void pong(cio *io);
-
-struct shared_obj {
-	obj *err;
-	obj *pong;
-	obj *ok;
-	obj *cmd;
-	obj *nullbulk;
-};
-
-static struct shared_obj shared;
+struct shared_obj shared;
 
 typedef void (*cmd_call)(cio *io);
 
@@ -41,10 +31,6 @@ void shared_obj_create() {
 	shared.pong = cstr_obj_create("+PONG\r\n");
 	shared.ok = cstr_obj_create("+OK\r\n");
 	shared.nullbulk = cstr_obj_create("$-1\r\n");
-}
-
-void pong(cio *io) {
-	reply_cstr(io, (cstr)shared.pong->priv);
 }
 
 void command_key_destroy(void *c) {
@@ -154,7 +140,7 @@ thr_socket_svr *create_thr_server() {
 	regist_commands(svr);
 
 	//TODO: set size from config
-	svr->thr_pool = cthr_pool_create(threads);
+	svr->thr_pool = cthr_pool_create(thread_num);
 	if(svr->thr_pool == NULL) {
 		destroy_thr_server(svr);
 		return NULL;

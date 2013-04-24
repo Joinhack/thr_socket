@@ -7,7 +7,6 @@
 #include "spinlock.h"
 #include "log.h"
 
-
 TABLE* thrs_open_table(THD * thd, cstr req_db, cstr req_table, const int writeable) {
 	int refresh = 1;
 	TABLE_LIST tables;
@@ -34,3 +33,5 @@ TABLE* thrs_open_table(THD * thd, cstr req_db, cstr req_table, const int writeab
 	table->use_all_columns();
 	return table;
 }
+
+

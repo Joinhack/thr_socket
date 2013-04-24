@@ -13,6 +13,9 @@ typedef struct {
 	clist_item *head;
 	size_t count;
 } clist;
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 clist *clist_create();
 void clist_destroy(clist *cl);
@@ -27,5 +30,8 @@ int clist_walk_remove(clist *cl, int (*cb)(void *, void *priv), void *priv);
 CINLINE size_t clist_len(clist *cl) {
 	return cl->count;
 }
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* end define common list **/

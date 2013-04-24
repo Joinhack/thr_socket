@@ -1,5 +1,5 @@
-#ifndef LOG_H
-#define LOG_H
+#ifndef THR_SVR_LOG_H
+#define THR_SVR_LOG_H
 #include "common.h"
 
 enum LOG_LEVEL {
@@ -10,9 +10,17 @@ enum LOG_LEVEL {
 	LEVEL_ERR
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void log_init(int fd);
 
 void log_print(int level, const char *fmt, ...);
+
+#ifdef __cplusplus
+}
+#endif
 
 #define ERROR(fmt, ...) log_print(LEVEL_ERR, fmt, ##__VA_ARGS__)
 
