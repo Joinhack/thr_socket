@@ -7,13 +7,68 @@
 
 #include "mysql_inc.h"
 #include "thr_socket_svr.h"
+#include "thrs_handler.h"
 
 void pong(cio *io) {
 	reply_cstr(io, (cstr)shared.pong->priv);
 }
 
 void open_table_command(cio* io) {
+	thr_socket_svr *svr = (thr_socket_svr*)io->priv;
+	THD *thd = (THD*)io->handler;
+	TABLE *tab = thrs_open_table(thd, (cstr)io->argv[1]->priv, (cstr)io->argv[2]->priv, 1);
+	if(tab == NULL)
+		reply_cstr(io, (cstr)shared.err->priv);
+	else
+		reply_cstr(io, (cstr)shared.ok->priv);
+}
 
+static THD* thd_create(char* db, const void *stack_bottom,
+		bool writeable) {
+	THD *thd = NULL;
+	my_thread_init();
+	thd = new THD();
+	if (thd == NULL) {
+		my_thread_end();
+		return NULL;
+	}
+	thd->thread_stack = (char*) stack_bottom;
+	DEBUG("THRS:thread_stack = %p sizeof(THD)=%zu sizeof(mtx)=%zu \n",
+			thd->thread_stack, sizeof(THD), sizeof(LOCK_thread_count));
+	thd->store_globals();
+	thd->system_thread = static_cast<enum_thread_type>(1 << 30UL);
+	const NET v = { 0 };
+	thd->net = v;
+	if (writeable) {
+		//for write
+#if MYSQL_VERSION_ID >= 50505
+		thd->variables.option_bits |= OPTION_BIN_LOG;
+#else
+		thd->options |= OPTION_BIN_LOG;
+#endif
+	}
+	//for db
+	safeFree(thd->db);
+	thd->db = db;
+	my_pthread_setspecific_ptr(THR_THD, thd);
+	return thd;
+}
+
+static void thd_destroy(THD *thd) {
+	my_pthread_setspecific_ptr(THR_THD, 0);
+	delete thd;
+	--thread_count;
+	my_thread_end();
+}
+
+
+void* mysql_thd_init(void *p) {
+	return thd_create(my_strdup("TDR_SOCKET",MYF(0)), p, 1);
+}
+
+void mysql_thds_destroy(thr_socket_svr *svr) {
+	THD *thd;
+	//TODO
 }
 
 static thr_socket_svr *svr = NULL;
@@ -23,7 +78,7 @@ static pthread_t mainloop_thrid = 0;
 static int thr_socket_plugin_init(void *p) {
 	pthread_attr_t  thr_attr;
 	if(pthread_attr_init(&thr_attr) < 0) {
-		fprintf(stderr, "init thread attr error\n");
+		ERROR("init thread attr error\n");
 		return 1;
 	}
 	svr = create_thr_server();

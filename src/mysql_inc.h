@@ -22,7 +22,7 @@
 #include <mysql/plugin.h>
 #include <transaction.h>
 #include <sql_base.h>
-
+#define safeFree(X) my_free(X)
 #else
 #include "mysql_priv.h"
 #endif

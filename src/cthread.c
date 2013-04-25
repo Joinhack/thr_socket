@@ -10,9 +10,12 @@ static cthread *cthread_create(cthr_pool *p);
 static void cthread_destroy(cthread  *thr);
 
 void *thread_loop(void *data) {
+	long stack_bottom;
 	cthread *thr = (cthread*)data;
 	cthr_pool *pool = thr->pool;
+	void *priv = pool->thr_cb(&stack_bottom);
 	for(;;) {
+		pair p;
 		pthread_mutex_lock(&pool->mutex);
 		thr->state = THR_IDLE;
 		if(pthread_cond_wait(&thr->cond, &pool->mutex) < 0) {
@@ -26,8 +29,10 @@ void *thread_loop(void *data) {
 			return NULL;
 		}
 		thr->state = THR_BUSY;
+		p.first = priv;
+		p.second = thr->proc_data;
 		if(thr->proc)
-			thr->proc(thr->proc_data);
+			thr->proc(&p);
 		thr->proc = NULL;
 		thr->proc_data = NULL;
 	}
@@ -73,7 +78,7 @@ void cthr_pool_destroy(cthr_pool *pool) {
 	jfree(pool);
 }
 
-cthr_pool *cthr_pool_create(size_t size) {
+cthr_pool *cthr_pool_create(size_t size, thread_cb *cb) {
 	int i, ret;
 	cthread *thr;
 	cthr_pool *pool = (cthr_pool *)jmalloc(sizeof(cthr_pool));
@@ -86,6 +91,7 @@ cthr_pool *cthr_pool_create(size_t size) {
 		return NULL;
 	}
 	pool->size = size;
+	pool->thr_cb = cb;
 	pool->state = THRP_WORK;
 	for(i = 0; i <  size; i++) {
 		thr = pool->thrs + i;

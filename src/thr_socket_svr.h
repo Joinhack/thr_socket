@@ -52,6 +52,12 @@ void pong(cio *io);
 
 void open_table_command(cio* io);
 
+void mysql_thrs_destroy(clist *l);
+
+void* mysql_thd_init(void *p);
+
+void mysql_thds_destroy(thr_socket_svr *svr);
+
 #ifdef __cplusplus
 }
 #endif

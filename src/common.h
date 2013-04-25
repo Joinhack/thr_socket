@@ -19,6 +19,11 @@ typedef uint64_t msec_t;
 #define USE_TASKINFO
 #endif
 
+typedef struct {
+	void *first;
+	void *second;
+} pair;
+
 #ifdef __cplusplus
 extern "C" {
 #endif

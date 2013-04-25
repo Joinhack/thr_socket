@@ -1,11 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "mysql_inc.h"
-#include "thrs_handler.h"
 #include "common.h"
 #include "cstr.h"
 #include "spinlock.h"
 #include "log.h"
+#include "thrs_handler.h"
+
 
 TABLE* thrs_open_table(THD * thd, cstr req_db, cstr req_table, const int writeable) {
 	int refresh = 1;
@@ -26,7 +27,7 @@ TABLE* thrs_open_table(THD * thd, cstr req_db, cstr req_table, const int writeab
 	table = open_table(thd, &tables, thd->mem_root, &refresh, OPEN_VIEW_NO_PARSE);
 #endif
 	if (table == NULL) {
-		ERROR("");
+		ERROR("can't open table, db:%s table%s\n", req_db, req_table);
 		return NULL;
 	}
 	table->reginfo.lock_type = writeable ? TL_WRITE : TL_READ;

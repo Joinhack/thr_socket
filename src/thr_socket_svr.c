@@ -22,7 +22,8 @@ struct command {
 
 //use the lower-case for command
 struct command commands[] = {
-	{"ping", pong, 1}
+	{"ping", pong, 1},
+	{"opentable", open_table_command, 3}
 };
 
 
@@ -140,13 +141,13 @@ thr_socket_svr *create_thr_server() {
 	regist_commands(svr);
 
 	//TODO: set size from config
-	svr->thr_pool = cthr_pool_create(thread_num);
+	svr->thr_pool = cthr_pool_create(thread_num, mysql_thd_init);
 	if(svr->thr_pool == NULL) {
 		destroy_thr_server(svr);
 		return NULL;
 	}
 	svr->evts = cevents_create();
-	INFO("server used %s for event\n", svr->evts->impl_name);
+	INFO("server used %s for event,\n", svr->evts->impl_name);
 	svr->last_info_time = 0;
 
 	svr->in_fd = create_tcp_server();
@@ -160,7 +161,8 @@ thr_socket_svr *create_thr_server() {
 
 void *process_event(void *priv) {
 	int rs;
-	cevents *cevts = (cevents*)priv;
+	pair *pr = (pair*)priv;
+	cevents *cevts = (cevents*)pr->second;
 	cevent_fired fired;
 	cevent *evt;
 	while(1) {
@@ -170,6 +172,7 @@ void *process_event(void *priv) {
 		if(fired.mask & CEV_PERSIST) {
 			cio *io = (cio*)evt->priv;
 			io->mask = fired.mask;
+			io->handler = pr->first;
 			process_commond(io);
 		} else {
 			if(fired.mask & CEV_READ) {
@@ -191,16 +194,11 @@ void *mainLoop(void *p) {
 	while(svr->running) {
 		ev_num = cevents_poll(svr->evts, 10);
 		if(ev_num > 0) {
-			//if connections less than limited, use the main thread process or use multi thread process. I think this value should from config.
-			if(((int)svr->connections) > 10) {
-				for(i = 0; i < ev_num; i++) {
-					//all threads is working.
-					if(cthr_pool_run_task(svr->thr_pool, process_event, svr->evts) == -1) {
-						break;
-					}
+			for(i = 0; i < ev_num; i++) {
+				//all threads is working.
+				if(cthr_pool_run_task(svr->thr_pool, process_event, svr->evts) == -1) {
+					break;
 				}
-			} else {
-				process_event(svr->evts);
 			}
 		}
 		if(svr->last_info_time + 2 <= svr->evts->poll_sec) {
