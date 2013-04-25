@@ -26,7 +26,6 @@ struct command commands[] = {
 	{"opentable", open_table_command, 3}
 };
 
-
 void shared_obj_create() {
 	shared.err = cstr_obj_create("-ERR\r\n");
 	shared.pong = cstr_obj_create("+PONG\r\n");
@@ -141,7 +140,7 @@ thr_socket_svr *create_thr_server() {
 	regist_commands(svr);
 
 	//TODO: set size from config
-	svr->thr_pool = cthr_pool_create(thread_num, mysql_thd_init);
+	svr->thr_pool = cthr_pool_create(thread_num, mysql_thd_init, mysql_thd_uninit);
 	if(svr->thr_pool == NULL) {
 		destroy_thr_server(svr);
 		return NULL;

@@ -66,9 +66,9 @@ void* mysql_thd_init(void *p) {
 	return thd_create(my_strdup("TDR_SOCKET",MYF(0)), p, 1);
 }
 
-void mysql_thds_destroy(thr_socket_svr *svr) {
-	THD *thd;
-	//TODO
+void* mysql_thd_uninit(void *p) {
+	THD *thd = (THD*)p;
+	thd_destroy(thd);
 }
 
 static thr_socket_svr *svr = NULL;

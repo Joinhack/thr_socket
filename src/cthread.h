@@ -29,13 +29,14 @@ typedef struct _thr_pool {
 	pthread_mutex_t mutex;
 	volatile int state;
 	size_t size;
-	thread_cb *thr_cb;
+	thread_cb *thr_init_cb;
+	thread_cb *thr_uninit_cb;
 } cthr_pool;
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-cthr_pool *cthr_pool_create(size_t size, thread_cb *cb);
+cthr_pool *cthr_pool_create(size_t size, thread_cb *init_cb, thread_cb *thr_uninit_cb);
 void cthr_pool_destroy(cthr_pool *pool);
 int cthr_pool_run_task(cthr_pool *pool, cthread_proc *proc, void *data);
 #ifdef __cplusplus

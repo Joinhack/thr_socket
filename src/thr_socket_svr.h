@@ -56,6 +56,8 @@ void mysql_thrs_destroy(clist *l);
 
 void* mysql_thd_init(void *p);
 
+void* mysql_thd_uninit(void *p);
+
 void mysql_thds_destroy(thr_socket_svr *svr);
 
 #ifdef __cplusplus

@@ -13,7 +13,7 @@ void *thread_loop(void *data) {
 	long stack_bottom;
 	cthread *thr = (cthread*)data;
 	cthr_pool *pool = thr->pool;
-	void *priv = pool->thr_cb(&stack_bottom);
+	void *priv = pool->thr_init_cb(&stack_bottom);
 	for(;;) {
 		pair p;
 		pthread_mutex_lock(&pool->mutex);
@@ -21,11 +21,13 @@ void *thread_loop(void *data) {
 		if(pthread_cond_wait(&thr->cond, &pool->mutex) < 0) {
 			//TODO: log it.
 			ERROR("wait error\n");
+			pool->thr_uninit_cb(priv);
 			return NULL;
 		}
 		pthread_mutex_unlock(&pool->mutex);
 		if(pool->state == THRP_EXIT) {
 			thr->state = THR_EXIT;
+			pool->thr_uninit_cb(priv);
 			return NULL;
 		}
 		thr->state = THR_BUSY;
@@ -78,7 +80,7 @@ void cthr_pool_destroy(cthr_pool *pool) {
 	jfree(pool);
 }
 
-cthr_pool *cthr_pool_create(size_t size, thread_cb *cb) {
+cthr_pool *cthr_pool_create(size_t size, thread_cb *init_cb, thread_cb *uninit_cb) {
 	int i, ret;
 	cthread *thr;
 	cthr_pool *pool = (cthr_pool *)jmalloc(sizeof(cthr_pool));
@@ -91,7 +93,8 @@ cthr_pool *cthr_pool_create(size_t size, thread_cb *cb) {
 		return NULL;
 	}
 	pool->size = size;
-	pool->thr_cb = cb;
+	pool->thr_init_cb = init_cb;
+	pool->thr_uninit_cb = uninit_cb;
 	pool->state = THRP_WORK;
 	for(i = 0; i <  size; i++) {
 		thr = pool->thrs + i;
