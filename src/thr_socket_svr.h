@@ -50,6 +50,8 @@ long long thrs_used_mem();
 
 void pong(cio *io);
 
+void insert_command(cio *io);
+
 void open_table_command(cio* io);
 
 void mysql_thrs_destroy(clist *l);

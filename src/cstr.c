@@ -57,7 +57,8 @@ void cstr_clear(cstr s) {
 cstr* cstr_split(char *s, size_t len, char *b, size_t slen, size_t *l) {
 	cstr *array = NULL;
 	size_t i, j, cap = 0, size = 0, beg = 0;
-	for(i = 0; i < len - slen; i++) {
+	array = jmalloc(sizeof(cstr)*cap);
+	for(i = 0; i < len - (slen - 1); i++) {
 		if(size + 1 >= cap ) {
 			cap += 5;
 			array = jrealloc(array, sizeof(cstr)*cap);

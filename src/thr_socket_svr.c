@@ -23,6 +23,7 @@ struct command {
 //use the lower-case for command
 struct command commands[] = {
 	{"ping", pong, 1},
+	{"insert", insert_command, -1},
 	{"opentable", open_table_command, 3}
 };
 

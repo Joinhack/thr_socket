@@ -13,14 +13,38 @@ void pong(cio *io) {
 	reply_cstr(io, (cstr)shared.pong->priv);
 }
 
+TABLE *tab;
+
 void open_table_command(cio* io) {
 	thr_socket_svr *svr = (thr_socket_svr*)io->priv;
 	THD *thd = (THD*)io->handler;
-	TABLE *tab = thrs_open_table(thd, (cstr)io->argv[1]->priv, (cstr)io->argv[2]->priv, 1);
+	tab = thrs_open_table(thd, (cstr)io->argv[1]->priv, (cstr)io->argv[2]->priv, 1);
 	if(tab == NULL)
 		reply_cstr(io, (cstr)shared.err->priv);
 	else
 		reply_cstr(io, (cstr)shared.ok->priv);
+}
+
+void insert_command(cio *io) {
+	int seq[1024];
+	int rs;
+	cstr *fields;
+	size_t s;
+	cstr val;
+	if(tab == NULL) {
+		reply_cstr(io, (cstr)shared.err->priv);
+		return;
+	}
+	rs = thrs_parse_fields(tab, (cstr)io->argv[1]->priv, seq, sizeof(seq));
+	if(rs == -1) {
+		reply_cstr(io, (cstr)shared.err->priv);
+		return;
+	}
+	val = (cstr)io->argv[2]->priv;
+	fields = cstr_split(val, cstr_used(val), ",", 1, &s);
+	thrs_insert_inner(tab, fields, s, seq, rs);
+	reply_cstr(io, (cstr)shared.ok->priv);
+	sleep(5);
 }
 
 static THD* thd_create(char* db, const void *stack_bottom,
