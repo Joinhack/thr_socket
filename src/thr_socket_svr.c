@@ -24,7 +24,7 @@ struct command {
 struct command commands[] = {
 	{"ping", pong, 1},
 	{"insert", insert_command, -1},
-	{"opentable", open_table_command, 3}
+	{"open", open_table_command, 3}
 };
 
 void shared_obj_create() {
@@ -141,7 +141,7 @@ thr_socket_svr *create_thr_server() {
 	regist_commands(svr);
 
 	//TODO: set size from config
-	svr->thr_pool = cthr_pool_create(thread_num, mysql_thd_init, mysql_thd_uninit);
+	svr->thr_pool = cthr_pool_create(thread_num, thr_priv_init, thr_priv_uninit);
 	if(svr->thr_pool == NULL) {
 		destroy_thr_server(svr);
 		return NULL;
@@ -172,7 +172,7 @@ void *process_event(void *priv) {
 		if(fired.mask & CEV_PERSIST) {
 			cio *io = (cio*)evt->priv;
 			io->mask = fired.mask;
-			io->handler = pr->first;
+			io->thr_priv = pr->first;
 			process_commond(io);
 		} else {
 			if(fired.mask & CEV_READ) {

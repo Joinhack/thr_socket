@@ -32,9 +32,11 @@ void cstr_destroy(cstr s) {
 
 cstr cstr_extend(cstr s, size_t add) {
 	cstrhdr *csh = CSTR_HDR(s);
+	size_t used = CSTR_HDR_USED(csh);
 	if(csh->free >= add) return s;
-	csh->len = (CSTR_HDR_USED(csh) + add)*2;
+	csh->len = (used + add)*2;
 	csh = jrealloc((void*)csh, csh->len + HLEN + 1);
+	csh->free = csh->len - used;
 	return (cstr)csh->buf;
 }
 
@@ -54,7 +56,7 @@ void cstr_clear(cstr s) {
 	csh->buf[0] = '\0';
 }
 
-cstr* cstr_split(char *s, size_t len, char *b, size_t slen, size_t *l) {
+cstr* cstr_split(char *s, size_t len, const char *b, size_t slen, size_t *l) {
 	cstr *array = NULL;
 	size_t i, j, cap = 0, size = 0, beg = 0;
 	array = jmalloc(sizeof(cstr)*cap);

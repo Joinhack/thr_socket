@@ -30,7 +30,7 @@ typedef struct {
 	size_t argc;
 	int tabidx;
 	void *priv;
-	void *handler;
+	void *thr_priv;
 } cio;
 
 #ifdef __cplusplus

@@ -42,6 +42,7 @@ int thrs_parse_fields(TABLE *table, cstr fieldstr, int *result, int len) {
 	cstr *fields = NULL;
 	size_t field_num;
 	size_t i;
+	int rs = 0;
 	fields = cstr_split((char*)fieldstr, cstr_used(fieldstr), ",", 1, &field_num);
 	if(fields == NULL ) {
 		TRACE("split fields error\n");
@@ -49,8 +50,8 @@ int thrs_parse_fields(TABLE *table, cstr fieldstr, int *result, int len) {
 	}
 	if(len <= field_num) {
 		TRACE("so many fields\n");
-		jfree(fields);
-		return -1;
+		rs = -1;
+		goto end;
 	}
 	for (i = 0; i < field_num; i++) {
 		Field **fld = 0;
@@ -62,13 +63,18 @@ int thrs_parse_fields(TABLE *table, cstr fieldstr, int *result, int len) {
 		}
 		if (*fld == 0) {
 			TRACE("UNKNOWN FLD %s\n", fields[i]);
-			jfree(fields);
-			return -1;
+			rs = -1;
+			goto end;
 		}
 		result[i] = j;
 	}
+	rs = 0;
+end:
+	for(i = 0; i < field_num; i++) {
+		cstr_destroy(fields[i]);
+	}
 	jfree(fields);
-  return 0;
+  return rs;
 }
 
 unsigned long long thrs_insert_inner(TABLE *table, cstr *fields, size_t fieldnum, int *seq, int seqlen) {

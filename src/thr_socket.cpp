@@ -13,38 +13,66 @@ void pong(cio *io) {
 	reply_cstr(io, (cstr)shared.pong->priv);
 }
 
-TABLE *tab;
+static inline cstr get_table_key(cstr db, cstr tab) {
+	cstr key = cstr_dup(db);
+	key = cstr_ncat(key, ".", 1);
+	key = cstr_ncat(key, tab, cstr_used(tab));
+	printf("%s\n", key);
+	return key;
+}
+
+static TABLE* open_table(cio* io) {
+	thr_socket_svr *svr = (thr_socket_svr*)io->priv;
+	thread_priv *thr_priv = (thread_priv*)io->thr_priv;
+	THD *thd = thr_priv->thd;
+	cstr db = (cstr)io->argv[1]->priv;
+	cstr tab = (cstr)io->argv[2]->priv;
+	cstr tab_key = get_table_key(db, tab);
+	TABLE *table = NULL;
+	dict_entry *entry = NULL;
+	entry = dict_find(thr_priv->opentabs, tab_key);
+	if(entry != NULL)
+		table = (TABLE*)entry->value;
+	if(table == NULL) {
+		table = thrs_open_table(thd, db, tab, 1);
+		if(table != NULL)
+			dict_add(thr_priv->opentabs, tab_key, table);
+	}
+	cstr_destroy(tab_key);
+	return table;
+}
 
 void open_table_command(cio* io) {
-	thr_socket_svr *svr = (thr_socket_svr*)io->priv;
-	THD *thd = (THD*)io->handler;
-	tab = thrs_open_table(thd, (cstr)io->argv[1]->priv, (cstr)io->argv[2]->priv, 1);
-	if(tab == NULL)
-		reply_cstr(io, (cstr)shared.err->priv);
-	else
+	TABLE *table = NULL;
+	table = open_table(io);
+	if(table != NULL)
 		reply_cstr(io, (cstr)shared.ok->priv);
+	else
+		reply_cstr(io, (cstr)shared.err->priv);
 }
 
 void insert_command(cio *io) {
 	int seq[1024];
 	int rs;
 	cstr *fields;
-	size_t s;
+	size_t size, i;
 	cstr val;
-	if(tab == NULL) {
-		reply_cstr(io, (cstr)shared.err->priv);
-		return;
-	}
-	rs = thrs_parse_fields(tab, (cstr)io->argv[1]->priv, seq, sizeof(seq));
+	TABLE *tab = NULL;
+	tab = open_table(io);
+	printf("%p\n", tab);
+	rs = thrs_parse_fields(tab, (cstr)io->argv[3]->priv, seq, sizeof(seq));
 	if(rs == -1) {
 		reply_cstr(io, (cstr)shared.err->priv);
 		return;
 	}
-	val = (cstr)io->argv[2]->priv;
-	fields = cstr_split(val, cstr_used(val), ",", 1, &s);
-	thrs_insert_inner(tab, fields, s, seq, rs);
+	val = (cstr)io->argv[4]->priv;
+	fields = cstr_split(val, cstr_used(val), ",", 1, &size);
+	thrs_insert_inner(tab, fields, size, seq, rs);
+	for(i = 0; i < size; i++) {
+		cstr_destroy(fields[i]);
+	}
+	jfree(fields);
 	reply_cstr(io, (cstr)shared.ok->priv);
-	sleep(5);
 }
 
 static THD* thd_create(char* db, const void *stack_bottom,
@@ -86,13 +114,52 @@ static void thd_destroy(THD *thd) {
 }
 
 
-void* mysql_thd_init(void *p) {
-	return thd_create(my_strdup("TDR_SOCKET",MYF(0)), p, 1);
+static void opentabs_key_destroy(void *c) {
+	cstr s = (cstr)c;
+	cstr_destroy(s);
 }
 
-void* mysql_thd_uninit(void *p) {
-	THD *thd = (THD*)p;
-	thd_destroy(thd);
+static unsigned int hash(const void *key) {
+	cstr cs = (cstr)key;
+	return dict_generic_hash(cs, cstr_used(cs));
+}
+
+static int opentabs_key_compare(const void *k1, const void *k2) {
+	size_t len;
+	cstr s1 = (cstr)k1;
+	cstr s2 = (cstr)k2;
+	len = cstr_used(s1);
+	if(len != cstr_used(s2))
+		return 0;
+	return memcmp(k1, k2, len) == 0;
+}
+
+static void* opentabs_key_dup(const void *k) {
+	return cstr_dup((cstr)k);
+}
+
+dict_opts opentabs_opts = {
+	hash,
+	opentabs_key_dup,
+	NULL,
+	opentabs_key_compare,
+	opentabs_key_destroy,
+	NULL,
+};
+
+void* thr_priv_init(void *p) {
+	thread_priv *thr_priv = (thread_priv*)jmalloc(sizeof(thread_priv));
+	thr_priv->opentabs = dict_create(&opentabs_opts);
+	thr_priv->thd = thd_create(my_strdup("TDR_SOCKET",MYF(0)), p, 1);
+	return thr_priv;
+}
+
+void* thr_priv_uninit(void *p) {
+	dict_entry *entry = NULL;
+	thread_priv *thr_priv = (thread_priv *)p;
+	thd_destroy(thr_priv->thd);
+	dict_destroy(thr_priv->opentabs);
+	return NULL;
 }
 
 static thr_socket_svr *svr = NULL;
