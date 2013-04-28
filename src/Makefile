@@ -3,10 +3,10 @@ MYSQL_SOURCE_PATH=
 MYSQL_BIN_PATH=
 
 CC=gcc
-CPP=gcc
-MYSQL_INC= -I $(MYSQL_SOURCE_PATH)/sql -I $(MYSQL_SOURCE_PATH)/include -I $(MYSQL_SOURCE_PATH)/regex -I $(MYSQL_SOURCE_PATH)/ -I $(MYSQL_SOURCE_PATH)/include/mysql -I  $(MYSQL_BIN_PATH)/include
+CPP=g++
+MYSQL_INC= -I $(MYSQL_SOURCE_PATH)/sql -I $(MYSQL_SOURCE_PATH)/include -I $(MYSQL_SOURCE_PATH)/regex -I $(MYSQL_SOURCE_PATH)/ -I $(MYSQL_SOURCE_PATH)/include/mysql $(shell $(MYSQL_BIN_PATH)/mysql_config --include)
 
-MYSQL_LIBS=$(shell $(MYSQL_BIN_PATH)/bin/mysql_config --libs_r) -L $(MYSQL_BIN_PATH)/lib
+MYSQL_LIBS= $(shell $(MYSQL_BIN_PATH)/mysql_config --libs_r) -L $(MYSQL_BIN_PATH)/../lib
 CFLAGS= -g -fPIC -DPIC -DUSE_TRACE   -static-libgcc 
 CXXFLAGS=$(MYSQL_INC) -g -static-libgcc  -O2  -fno-rtti -fno-exceptions -fPIC -DPIC  -DWITH_WSREP -DWSREP_PROC_INFO  -DMYSQL_MAX_VARIABLE_VALUE_LEN=2048 -DWITH_INNODB_DISALLOW_WRITES -DMY_PTHREAD_FASTMUTEX=1 -DDBUG_OFF
 LIBS= -lpthread 

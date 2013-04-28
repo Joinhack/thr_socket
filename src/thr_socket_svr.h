@@ -54,13 +54,9 @@ void insert_command(cio *io);
 
 void open_table_command(cio* io);
 
-void mysql_thrs_destroy(clist *l);
-
 void* thr_priv_init(void *p);
 
 void* thr_priv_uninit(void *p);
-
-void mysql_thds_destroy(thr_socket_svr *svr);
 
 #ifdef __cplusplus
 }

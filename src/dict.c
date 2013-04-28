@@ -60,6 +60,12 @@ void dict_destroy(dict *d) {
 	jfree(d);
 }
 
+void dict_clear(dict *d) {
+	d->rehashidx = -1;
+	_table_clear(d, &d->dt[0]);
+	_table_clear(d, &d->dt[1]);
+}
+
 /**
  *if is rehashing move data from old to new hash table
  */

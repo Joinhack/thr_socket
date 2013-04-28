@@ -17,7 +17,6 @@ static inline cstr get_table_key(cstr db, cstr tab) {
 	cstr key = cstr_dup(db);
 	key = cstr_ncat(key, ".", 1);
 	key = cstr_ncat(key, tab, cstr_used(tab));
-	printf("%s\n", key);
 	return key;
 }
 
@@ -58,108 +57,30 @@ void insert_command(cio *io) {
 	size_t size, i;
 	cstr val;
 	TABLE *tab = NULL;
+	MYSQL_LOCK *lock;
+	thread_priv *thr_priv = (thread_priv*)io->thr_priv;
 	tab = open_table(io);
-	printf("%p\n", tab);
+	if(tab == NULL) {
+		reply_cstr(io, (cstr)shared.err->priv);
+		return;
+	}
 	rs = thrs_parse_fields(tab, (cstr)io->argv[3]->priv, seq, sizeof(seq));
 	if(rs == -1) {
 		reply_cstr(io, (cstr)shared.err->priv);
+		thrs_close_table(thr_priv);
 		return;
 	}
 	val = (cstr)io->argv[4]->priv;
 	fields = cstr_split(val, cstr_used(val), ",", 1, &size);
-	thrs_insert_inner(tab, fields, size, seq, rs);
+	lock = thrs_lock_tables(thr_priv, 1);
+	rs = thrs_insert_inner(tab, fields, size, seq, rs);
+	thrs_unlock_table(thr_priv, lock, 1, rs);
+	thrs_close_table(thr_priv);
 	for(i = 0; i < size; i++) {
 		cstr_destroy(fields[i]);
 	}
 	jfree(fields);
 	reply_cstr(io, (cstr)shared.ok->priv);
-}
-
-static THD* thd_create(char* db, const void *stack_bottom,
-		bool writeable) {
-	THD *thd = NULL;
-	my_thread_init();
-	thd = new THD();
-	if (thd == NULL) {
-		my_thread_end();
-		return NULL;
-	}
-	thd->thread_stack = (char*) stack_bottom;
-	DEBUG("THRS:thread_stack = %p sizeof(THD)=%zu sizeof(mtx)=%zu \n",
-			thd->thread_stack, sizeof(THD), sizeof(LOCK_thread_count));
-	thd->store_globals();
-	thd->system_thread = static_cast<enum_thread_type>(1 << 30UL);
-	const NET v = { 0 };
-	thd->net = v;
-	if (writeable) {
-		//for write
-#if MYSQL_VERSION_ID >= 50505
-		thd->variables.option_bits |= OPTION_BIN_LOG;
-#else
-		thd->options |= OPTION_BIN_LOG;
-#endif
-	}
-	//for db
-	safeFree(thd->db);
-	thd->db = db;
-	my_pthread_setspecific_ptr(THR_THD, thd);
-	return thd;
-}
-
-static void thd_destroy(THD *thd) {
-	my_pthread_setspecific_ptr(THR_THD, 0);
-	delete thd;
-	--thread_count;
-	my_thread_end();
-}
-
-
-static void opentabs_key_destroy(void *c) {
-	cstr s = (cstr)c;
-	cstr_destroy(s);
-}
-
-static unsigned int hash(const void *key) {
-	cstr cs = (cstr)key;
-	return dict_generic_hash(cs, cstr_used(cs));
-}
-
-static int opentabs_key_compare(const void *k1, const void *k2) {
-	size_t len;
-	cstr s1 = (cstr)k1;
-	cstr s2 = (cstr)k2;
-	len = cstr_used(s1);
-	if(len != cstr_used(s2))
-		return 0;
-	return memcmp(k1, k2, len) == 0;
-}
-
-static void* opentabs_key_dup(const void *k) {
-	return cstr_dup((cstr)k);
-}
-
-dict_opts opentabs_opts = {
-	hash,
-	opentabs_key_dup,
-	NULL,
-	opentabs_key_compare,
-	opentabs_key_destroy,
-	NULL,
-};
-
-void* thr_priv_init(void *p) {
-	thread_priv *thr_priv = (thread_priv*)jmalloc(sizeof(thread_priv));
-	thr_priv->opentabs = dict_create(&opentabs_opts);
-	thr_priv->thd = thd_create(my_strdup("TDR_SOCKET",MYF(0)), p, 1);
-	return thr_priv;
-}
-
-void* thr_priv_uninit(void *p) {
-	dict_entry *entry = NULL;
-	thread_priv *thr_priv = (thread_priv *)p;
-	thd_destroy(thr_priv->thd);
-	dict_destroy(thr_priv->opentabs);
-	return NULL;
 }
 
 static thr_socket_svr *svr = NULL;
@@ -186,6 +107,7 @@ static int thr_socket_plugin_init(void *p) {
 
 static int thr_socket_plugin_deinit(void *p) {
 	void *rs;
+	INFO("thr socket server exit\n");
 	if(svr == NULL)
 		return 1;
 	if(svr->running) {

@@ -17,6 +17,7 @@
 #include <sql_priv.h>
 #include "sql_class.h"
 #include "unireg.h"
+#include <lock.h>
 #include "key.h" // key_copy()
 #include <my_global.h>
 #include <mysql/plugin.h>

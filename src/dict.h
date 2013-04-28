@@ -65,6 +65,8 @@ int dict_replace(dict *d, void *key, void *val);
 
 int dict_del(dict *d, void *key);
 
+void dict_clear(dict *d);
+
 dict_entry *dict_find(dict *d, void *key);
 
 int dict_del_no_free(dict *d, void *key);

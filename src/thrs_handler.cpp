@@ -6,8 +6,106 @@
 #include "cstr.h"
 #include "spinlock.h"
 #include "log.h"
+#include "dict.h"
 #include "thrs_handler.h"
 #include "jmalloc.h"
+#include "thr_socket_svr.h"
+
+static THD* thd_create(char* db, const void *stack_bottom,
+		bool writeable) {
+	THD *thd = NULL;
+	my_thread_init();
+	thd = new THD();
+	if (thd == NULL) {
+		my_thread_end();
+		return NULL;
+	}
+	thd->thread_stack = (char*) stack_bottom;
+	DEBUG("THRS:thread_stack = %p sizeof(THD)=%zu sizeof(mtx)=%zu \n",
+			thd->thread_stack, sizeof(THD), sizeof(LOCK_thread_count));
+	thd->store_globals();
+	thd->system_thread = static_cast<enum_thread_type>(1 << 30UL);
+	const NET v = { 0 };
+	thd->net = v;
+	if (writeable) {
+		//for write
+#if MYSQL_VERSION_ID >= 50505
+		thd->variables.option_bits |= OPTION_BIN_LOG;
+#else
+		thd->options |= OPTION_BIN_LOG;
+#endif
+	}
+	//for db
+	safeFree(thd->db);
+	thd->db = db;
+	my_pthread_setspecific_ptr(THR_THD, thd);
+	return thd;
+}
+
+static void thd_destroy(THD *thd) {
+	my_pthread_setspecific_ptr(THR_THD, 0);
+	delete thd;
+	--thread_count;
+	my_thread_end();
+}
+
+
+static void opentabs_key_destroy(void *c) {
+	cstr s = (cstr)c;
+	cstr_destroy(s);
+}
+
+static unsigned int hash(const void *key) {
+	cstr cs = (cstr)key;
+	return dict_generic_hash(cs, cstr_used(cs));
+}
+
+static int opentabs_key_compare(const void *k1, const void *k2) {
+	size_t len;
+	cstr s1 = (cstr)k1;
+	cstr s2 = (cstr)k2;
+	len = cstr_used(s1);
+	if(len != cstr_used(s2))
+		return 0;
+	return memcmp(k1, k2, len) == 0;
+}
+
+static void* opentabs_key_dup(const void *k) {
+	return cstr_dup((cstr)k);
+}
+
+dict_opts opentabs_opts = {
+	hash,
+	opentabs_key_dup,
+	NULL,
+	opentabs_key_compare,
+	opentabs_key_destroy,
+	NULL,
+};
+
+void* thr_priv_init(void *p) {
+	thread_priv *thr_priv = (thread_priv*)jmalloc(sizeof(thread_priv));
+	thr_priv->opentabs = dict_create(&opentabs_opts);
+	thr_priv->thd = thd_create(my_strdup("TDR_SOCKET",MYF(0)), p, 1);
+	return thr_priv;
+}
+
+void* thr_priv_uninit(void *p) {
+	dict_entry *entry = NULL;
+	thread_priv *thr_priv = (thread_priv *)p;
+	thd_destroy(thr_priv->thd);
+	dict_destroy(thr_priv->opentabs);
+	return NULL;
+}
+
+void thrs_close_table(thread_priv *thr_priv) {
+	close_thread_tables(thr_priv->thd);
+#if MYSQL_VERSION_ID >= 50505
+	thr_priv->thd->mdl_context.release_transactional_locks();
+#endif
+	dict_clear(thr_priv->opentabs);
+}
+
 
 #define min(a, b) (a<b?a:b)
 TABLE* thrs_open_table(THD * thd, cstr req_db, cstr req_table, const int writeable) {
@@ -105,3 +203,88 @@ unsigned long long thrs_insert_inner(TABLE *table, cstr *fields, size_t fieldnum
 	}
 	return 0;
 }
+
+static MYSQL_LOCK *_thrs_lock_tables(THD *thd, TABLE** tables, int count, int writeable) {
+	MYSQL_LOCK *lock;
+	if (!writeable) {
+		thd->lex->sql_command = SQLCOM_SELECT;
+	}
+#if MYSQL_VERSION_ID >= 50505
+	lock = thd->lock = mysql_lock_tables(thd, tables, count, 0);
+#else
+	bool need_reopen = false;
+	lock = thd->lock = mysql_lock_tables(thd, tables, count,
+			MYSQL_LOCK_NOTIFY_IF_NEED_REOPEN, &need_reopen);
+#endif
+	if (lock == NULL) {
+		ERROR( "lock table failed! thd [%p]\n", thd);
+		return NULL;
+	}
+	if (writeable) {
+#if MYSQL_VERSION_ID >= 50505
+		thd->set_current_stmt_binlog_format_row();
+#else
+		thd->current_stmt_binlog_row_based = 1;
+#endif
+	}
+
+	DEBUG("tdhs_lock_table! table count[%d]\n", count);
+	return lock;
+}
+
+MYSQL_LOCK *thrs_lock_tables(thread_priv *thr_priv, int writeable) {
+	size_t i;
+	MYSQL_LOCK *lock;
+	size_t tabnum = DICT_USED(thr_priv->opentabs);
+	TABLE **tables = (TABLE **)jmalloc(tabnum*sizeof(TABLE*));
+	dict_iterator *iter = dict_get_iterator(thr_priv->opentabs);
+	dict_entry *entry;
+	i = 0;
+	while((entry = dict_iterator_next(iter)) != NULL) {
+		tables[i] = (TABLE*)entry->value;
+	}
+	dict_iterator_destroy(iter);
+	lock = _thrs_lock_tables(thr_priv->thd, tables, tabnum, writeable);
+	jfree(tables);
+	return lock;
+}
+
+int thrs_unlock_table(thread_priv *thr_priv, MYSQL_LOCK* lock, int writeable, int rollback) {
+	int rs = 0;
+	THD *thd = thr_priv->thd;
+	DEBUG("thrs_unlock_table! lock [%p]\n", *lock);
+	if (lock != NULL) {
+		if (writeable && DICT_USED(thr_priv->opentabs) > 0) {
+			TABLE* tab;
+			dict_iterator *iter = dict_get_iterator(thr_priv->opentabs);
+			dict_entry *entry;
+			while((entry = dict_iterator_next(iter)) != NULL) {
+				tab = (TABLE*)entry->value;
+				query_cache_invalidate3(thd, tab, 1);
+				tab->file->ha_release_auto_increment();
+			}
+			dict_iterator_destroy(iter);
+		}
+		{
+			bool suc = true;
+#if MYSQL_VERSION_ID >= 50505
+			if(rollback) {
+				suc = trans_rollback_stmt(thd);
+			} else {
+				suc = (trans_commit_stmt(thd) == FALSE);
+			}
+#else
+			suc = (ha_autocommit_or_rollback(thd, rollback) == 0);
+#endif
+			if (!suc) {
+				WARN("commit failed, it's rollback! thd [%p] write_error [%d] \n", thd, rollback);
+				rs = -1;
+			}
+		}
+		mysql_unlock_tables(thd, lock);
+		thd->lock = NULL;
+	}
+	return rs;
+}
+
+
