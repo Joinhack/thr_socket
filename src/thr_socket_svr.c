@@ -17,14 +17,23 @@ typedef void (*cmd_call)(cio *io);
 struct command {
 	char *name;
 	cmd_call call;
+	int symbolic;
 	int argc;
+};
+
+enum compare_symbolic {
+	EQ = 0,
+	GT,
+	LT,
+	GE,
+	LE
 };
 
 //use the lower-case for command
 struct command commands[] = {
-	{"ping", pong, 1},
-	{"insert", insert_command, -1},
-	{"open", open_table_command, 3}
+	{"ping", pong, EQ, 1},
+	{"insert", insert_command, GE, 5},
+	{"get", get_command, GE, 6}
 };
 
 void shared_obj_create() {
@@ -80,15 +89,38 @@ int process_commond(cio *io) {
 	if(cmd_entry != NULL) {
 		cmd = (struct command*)cmd_entry->value;
 		if(cmd->argc >= 0) {
-			if(cmd->argc != -1 && cmd->argc != io->argc) {
-				snprintf(buf,sizeof(buf), "-ERR wrong number arguments for command '%s'\r\n", (cstr)io->argv[0]->priv);
-				return reply_str(io, buf);
+			if(cmd->argc != -1) {
+				switch(cmd->symbolic) {
+				case EQ:
+					if(cmd->argc != io->argc)
+						goto args_err;
+					break;
+				case LT:
+					if(cmd->argc <= io->argc)
+						goto args_err;
+					break;
+				case GT:
+					if(cmd->argc >= io->argc)
+						goto args_err;
+					break;
+				case LE:
+					if(cmd->argc < io->argc)
+						goto args_err;
+					break;
+				case GE:
+					if(cmd->argc > io->argc)
+						goto args_err;
+					break;
+				}
 			}
 		}
 		cmd->call(io);
 		return 0;
 	}
 	snprintf(buf,sizeof(buf), "-ERR unknown command '%s'\r\n", (cstr)io->argv[0]->priv);
+	return reply_str(io, buf);
+args_err:
+	snprintf(buf,sizeof(buf), "-ERR wrong number arguments for command '%s'\r\n", (cstr)io->argv[0]->priv);
 	return reply_str(io, buf);
 }
 
@@ -141,7 +173,7 @@ thr_socket_svr *create_thr_server() {
 	regist_commands(svr);
 
 	//TODO: set size from config
-	svr->thr_pool = cthr_pool_create(thread_num, thr_priv_init, thr_priv_uninit);
+	svr->thr_pool = cthr_pool_create(thread_num, db_ctx_init, db_ctx_uninit);
 	if(svr->thr_pool == NULL) {
 		destroy_thr_server(svr);
 		return NULL;

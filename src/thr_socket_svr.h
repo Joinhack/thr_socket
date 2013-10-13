@@ -54,9 +54,11 @@ void insert_command(cio *io);
 
 void open_table_command(cio* io);
 
-void* thr_priv_init(void *p);
+void get_command(cio *io);
 
-void* thr_priv_uninit(void *p);
+void* db_ctx_init(void *p);
+
+void* db_ctx_uninit(void *p);
 
 #ifdef __cplusplus
 }

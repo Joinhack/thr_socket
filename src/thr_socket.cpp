@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <ctype.h>
 #include <string.h>
+#include <string>
 #include <unistd.h>
 
 #include "mysql_inc.h"
@@ -22,20 +23,20 @@ static inline cstr get_table_key(cstr db, cstr tab) {
 
 static TABLE* open_table(cio* io) {
 	thr_socket_svr *svr = (thr_socket_svr*)io->priv;
-	thread_priv *thr_priv = (thread_priv*)io->thr_priv;
-	THD *thd = thr_priv->thd;
+	db_ctx *ctx = (db_ctx*)io->thr_priv;
+	THD *thd = ctx->thd;
 	cstr db = (cstr)io->argv[1]->priv;
 	cstr tab = (cstr)io->argv[2]->priv;
 	cstr tab_key = get_table_key(db, tab);
 	TABLE *table = NULL;
 	dict_entry *entry = NULL;
-	entry = dict_find(thr_priv->opentabs, tab_key);
+	entry = dict_find(ctx->opentabs, tab_key);
 	if(entry != NULL)
 		table = (TABLE*)entry->value;
 	if(table == NULL) {
 		table = thrs_open_table(thd, db, tab, 1);
 		if(table != NULL)
-			dict_add(thr_priv->opentabs, tab_key, table);
+			dict_add(ctx->opentabs, tab_key, table);
 	}
 	cstr_destroy(tab_key);
 	return table;
@@ -52,35 +53,106 @@ void open_table_command(cio* io) {
 
 void insert_command(cio *io) {
 	int seq[1024];
-	int rs;
+	int rs, filenum;
 	cstr *fields;
-	size_t size, i;
+	size_t size, i, j;
 	cstr val;
 	TABLE *tab = NULL;
 	MYSQL_LOCK *lock;
-	thread_priv *thr_priv = (thread_priv*)io->thr_priv;
+	db_ctx *ctx = (db_ctx*)io->thr_priv;
 	tab = open_table(io);
 	if(tab == NULL) {
 		reply_cstr(io, (cstr)shared.err->priv);
 		return;
 	}
-	rs = thrs_parse_fields(tab, (cstr)io->argv[3]->priv, seq, sizeof(seq));
+	filenum = thrs_parse_fields(tab, (cstr)io->argv[3]->priv, seq, sizeof(seq));
 	if(rs == -1) {
 		reply_cstr(io, (cstr)shared.err->priv);
-		thrs_close_table(thr_priv);
+		thrs_close_table(ctx);
 		return;
 	}
-	val = (cstr)io->argv[4]->priv;
-	fields = cstr_split(val, cstr_used(val), ",", 1, &size);
-	lock = thrs_lock_tables(thr_priv, 1);
-	rs = thrs_insert_inner(tab, fields, size, seq, rs);
-	thrs_unlock_table(thr_priv, lock, 1, rs);
-	thrs_close_table(thr_priv);
-	for(i = 0; i < size; i++) {
-		cstr_destroy(fields[i]);
+	lock = thrs_lock_tables(ctx, 1);
+	for(j = 4; j < io->argc; j++) {
+		val = (cstr)io->argv[j]->priv;
+		fields = cstr_split(val, cstr_used(val), ",", 1, &size);
+		rs = thrs_insert_inner(tab, fields, size, seq, filenum);
+		for(i = 0; i < size; i++) {
+			cstr_destroy(fields[i]);
+		}
+		jfree(fields);
+		//if thrs_insert_inner return not 0, will be rollback;
+		if(rs)
+			break;
 	}
-	jfree(fields);
-	reply_cstr(io, (cstr)shared.ok->priv);
+	thrs_unlock_table(ctx, lock, 1, rs);
+	thrs_close_table(ctx);
+	reply_len(io, rs);
+}
+
+void get_command(cio *io) {
+	int seq[1024];
+	db_ctx *ctx = (db_ctx*)io->thr_priv;
+	TABLE *tab;
+	tab = open_table(io);
+	MYSQL_LOCK *lock;
+	int rs;
+	int idx;
+	if(tab == NULL) {
+		reply_cstr(io, (cstr)shared.err->priv);
+		return;
+	}
+	idx = thrs_open_index(tab, (cstr)io->argv[4]->priv);
+	if(idx < 0) {
+		DEBUG("error open idx\n");
+		reply_cstr(io, (cstr)shared.err->priv);
+		return;
+	}
+	lock = thrs_lock_tables(ctx, 0);
+  KEY& kinfo = tab->key_info[idx];
+  uchar *const key_buf = (uchar*)jmalloc(sizeof(uchar) * kinfo.key_length);
+  size_t kplen_sum = prepare_keybuf((cstr*)&io->argv[6]->priv, 1, key_buf, tab, kinfo);
+  tab->read_set = &tab->s->all_set;
+  handler *const hnd = tab->file;
+  hnd->init_table_handle_for_HANDLER();
+  hnd->ha_index_or_rnd_end();
+  hnd->ha_index_init(idx, 1);
+  const key_part_map kpm = (1U << cstr_used((cstr)io->argv[6]->priv)) - 1;
+  rs = hnd->index_read_map(tab->record[0], key_buf, kpm, HA_READ_KEY_EXACT);
+  rs = hnd->index_next_same(tab->record[0], key_buf, kplen_sum);
+  TRACE("rs %d HA_ERR_RECORD_DELETED:%d HA_ERR_KEY_NOT_FOUND:%d, HA_ERR_END_OF_FILE:%d\n", rs, HA_ERR_RECORD_DELETED, HA_ERR_KEY_NOT_FOUND, HA_ERR_END_OF_FILE);
+  
+  if(rs != 0 && rs != HA_ERR_RECORD_DELETED && rs != HA_ERR_KEY_NOT_FOUND
+				&& rs != HA_ERR_END_OF_FILE) {
+
+  } else {
+  	rs = thrs_parse_fields(tab, (cstr)io->argv[3]->priv, seq, sizeof(seq));
+	  for (size_t i = 0; i < rs; ++i) {
+	  	char rwpstr_buf[64];
+	  	String rwpstr(rwpstr_buf, sizeof(rwpstr_buf), &my_charset_bin);
+	    int fn = seq[i];
+	    Field *const fld = tab->field[fn];
+			TRACE("fld=%p %zu\n", fld, fn);
+			if (fld->is_null()) {
+			/* null */
+			} else {
+				fld->val_str(&rwpstr, &rwpstr);
+				const size_t len = rwpstr.length();
+				if (len != 0) {
+					/* non-empty */
+					const std::string s(rwpstr.ptr(), rwpstr.length());
+					TRACE("buf %s\n", s.c_str());
+				} else {
+				/* empty */
+					static const char empty_str[] = "";
+				}
+			}
+		}
+	}
+	hnd->ha_index_or_rnd_end();
+  jfree(key_buf);
+	thrs_unlock_table(ctx, lock, 0, 0);
+	thrs_close_table(ctx);
+	reply_cstr(io, (cstr)shared.err->priv);
 }
 
 static thr_socket_svr *svr = NULL;

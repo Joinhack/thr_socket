@@ -83,27 +83,27 @@ dict_opts opentabs_opts = {
 	NULL,
 };
 
-void* thr_priv_init(void *p) {
-	thread_priv *thr_priv = (thread_priv*)jmalloc(sizeof(thread_priv));
-	thr_priv->opentabs = dict_create(&opentabs_opts);
-	thr_priv->thd = thd_create(my_strdup("TDR_SOCKET",MYF(0)), p, 1);
-	return thr_priv;
+void* db_ctx_init(void *p) {
+	db_ctx *ctx = (db_ctx*)jmalloc(sizeof(db_ctx));
+	ctx->opentabs = dict_create(&opentabs_opts);
+	ctx->thd = thd_create(my_strdup("TDR_SOCKET",MYF(0)), p, 1);
+	return ctx;
 }
 
-void* thr_priv_uninit(void *p) {
+void* db_ctx_uninit(void *p) {
 	dict_entry *entry = NULL;
-	thread_priv *thr_priv = (thread_priv *)p;
-	thd_destroy(thr_priv->thd);
-	dict_destroy(thr_priv->opentabs);
+	db_ctx *ctx = (db_ctx *)p;
+	thd_destroy(ctx->thd);
+	dict_destroy(ctx->opentabs);
 	return NULL;
 }
 
-void thrs_close_table(thread_priv *thr_priv) {
-	close_thread_tables(thr_priv->thd);
+void thrs_close_table(db_ctx *ctx) {
+	close_thread_tables(ctx->thd);
 #if MYSQL_VERSION_ID >= 50505
-	thr_priv->thd->mdl_context.release_transactional_locks();
+	ctx->thd->mdl_context.release_transactional_locks();
 #endif
-	dict_clear(thr_priv->opentabs);
+	dict_clear(ctx->opentabs);
 }
 
 
@@ -166,7 +166,7 @@ int thrs_parse_fields(TABLE *table, cstr fieldstr, int *result, int len) {
 		}
 		result[i] = j;
 	}
-	rs = 0;
+	rs = field_num;
 end:
 	for(i = 0; i < field_num; i++) {
 		cstr_destroy(fields[i]);
@@ -181,10 +181,13 @@ unsigned long long thrs_insert_inner(TABLE *table, cstr *fields, size_t fieldnum
 	uchar *const buf = table->record[0];
 	empty_record(table);
 	memset(buf, 0, table->s->null_bytes); /* clear null flags */
+	TRACE("fieldnum:%d seqlen:%d\n", fieldnum, seqlen);
 	const size_t n = min(fieldnum, seqlen);
+
   for (size_t i = 0; i < n; ++i) {
 		uint32_t fn = seq[i];
 		Field *const fld = table->field[fn];
+		TRACE("field %s:%s\n",fld->field_name, fields[i]);
 		if (fields[i] == NULL) {
 			fld->set_null();
 		} else {
@@ -194,6 +197,7 @@ unsigned long long thrs_insert_inner(TABLE *table, cstr *fields, size_t fieldnum
 	table->next_number_field = table->found_next_number_field;
 	const int r = hnd->ha_write_row(buf);
 	const ulonglong insert_id = table->file->insert_id_for_cur_row;
+	TRACE("ha_write_now result:%d table->next_number_field:%llu\n", r, insert_id);
 	table->next_number_field = 0;
 	if (r == 0 && table->found_next_number_field != 0) {
 	  return insert_id;
@@ -232,31 +236,31 @@ static MYSQL_LOCK *_thrs_lock_tables(THD *thd, TABLE** tables, int count, int wr
 	return lock;
 }
 
-MYSQL_LOCK *thrs_lock_tables(thread_priv *thr_priv, int writeable) {
+MYSQL_LOCK *thrs_lock_tables(db_ctx *ctx, int writeable) {
 	size_t i;
 	MYSQL_LOCK *lock;
-	size_t tabnum = DICT_USED(thr_priv->opentabs);
+	size_t tabnum = DICT_USED(ctx->opentabs);
 	TABLE **tables = (TABLE **)jmalloc(tabnum*sizeof(TABLE*));
-	dict_iterator *iter = dict_get_iterator(thr_priv->opentabs);
+	dict_iterator *iter = dict_get_iterator(ctx->opentabs);
 	dict_entry *entry;
 	i = 0;
 	while((entry = dict_iterator_next(iter)) != NULL) {
 		tables[i] = (TABLE*)entry->value;
 	}
 	dict_iterator_destroy(iter);
-	lock = _thrs_lock_tables(thr_priv->thd, tables, tabnum, writeable);
+	lock = _thrs_lock_tables(ctx->thd, tables, tabnum, writeable);
 	jfree(tables);
 	return lock;
 }
 
-int thrs_unlock_table(thread_priv *thr_priv, MYSQL_LOCK* lock, int writeable, int rollback) {
+int thrs_unlock_table(db_ctx *ctx, MYSQL_LOCK* lock, int writeable, int rollback) {
 	int rs = 0;
-	THD *thd = thr_priv->thd;
+	THD *thd = ctx->thd;
 	DEBUG("thrs_unlock_table! lock [%p]\n", *lock);
 	if (lock != NULL) {
-		if (writeable && DICT_USED(thr_priv->opentabs) > 0) {
+		if (writeable && DICT_USED(ctx->opentabs) > 0) {
 			TABLE* tab;
-			dict_iterator *iter = dict_get_iterator(thr_priv->opentabs);
+			dict_iterator *iter = dict_get_iterator(ctx->opentabs);
 			dict_entry *entry;
 			while((entry = dict_iterator_next(iter)) != NULL) {
 				tab = (TABLE*)entry->value;
@@ -287,4 +291,39 @@ int thrs_unlock_table(thread_priv *thr_priv, MYSQL_LOCK* lock, int writeable, in
 	return rs;
 }
 
+int thrs_open_index(TABLE *table, cstr idx) {
+	const char *ptr = idx;
+	long long idxnum;
+	if(ptr[0] >= '0' && ptr[0] <= '9') {
+		if(str2ll(idx, cstr_used(idx), &idxnum) < 0) return -1;
+		return idxnum;
+	}
+	ptr[0] == '\0'? ptr = "PRIMARY": ptr = idx;
+	for (uint i = 0; i < table->s->keys; ++i) {
+		KEY& kinfo = table->key_info[i];
+		if (strncmp(kinfo.name, ptr, cstr_used(idx)) == 0) {
+			return idxnum;
+		}
+	}
+	return -1;
+}
+
+size_t prepare_keybuf(cstr* keys, const uint32_t key_num, uchar *key_buf, TABLE *table, KEY& kinfo) {
+	size_t key_len_sum = 0;
+	for (size_t i = 0; i < key_num; i++) {
+		const KEY_PART_INFO & kpt = kinfo.key_part[i];
+		const cstr key = keys[i];
+		if (cstr_used(key) == 0) {
+			kpt.field->set_null();
+		} else {
+			kpt.field->set_notnull();
+			kpt.field->store(key, cstr_used(key), &my_charset_bin);
+		}
+		key_len_sum += kpt.store_length;
+		TRACE("key len=%u store len=%zu\n", kpt.length, kpt.store_length);
+	}
+	key_copy(key_buf, table->record[0], &kinfo, key_len_sum);
+	TRACE("keys sum=%zu flen=%u\n", key_len_sum, kinfo.key_length);
+	return key_len_sum;
+}
 
